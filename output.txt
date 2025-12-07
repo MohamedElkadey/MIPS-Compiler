@@ -1,0 +1,36 @@
+.data
+a: .word 0
+b: .word 0
+z: .word 0
+
+.text
+.globl main
+main:
+li $t9, 10
+move $t0, $t9
+la $at, a
+sw $t0, 0($at)
+li $t1, 10
+move $t2, $t0
+add $t9, $t1, $t2
+move $t3, $t9
+la $at, b
+sw $t3, 0($at)
+move $t1, $t3
+li $t2, 4
+mul $t1, $t1, $t2
+move $t1, $t0
+li $t2, 5
+mul $t2, $t1, $t2
+add $t9, $t1, $t2
+move $t4, $t9
+la $at, z
+sw $t4, 0($at)
+move $t1, $t0
+move $t2, $t4
+add $t9, $t1, $t2
+move $t0, $t9
+la $at, a
+sw $t0, 0($at)
+li $v0, 10
+syscall
