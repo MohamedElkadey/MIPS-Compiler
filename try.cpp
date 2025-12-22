@@ -594,9 +594,6 @@ private:
     }
 };
 
-#include <bits/stdc++.h>
-using namespace std;
-
 struct CodeGen {
     vector<string> out;
     vector<string> dataLines;

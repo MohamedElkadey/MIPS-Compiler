@@ -1,18 +1,10 @@
-// parser_adt.cpp
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <vector>
-#include <memory>
-#include <map>
-#include <stdexcept>
-#include <cctype>
+#include <bits/stdc++.h>
+using namespace std;
 
-// ==================== LEXER (Your existing code) ====================
+// ==================== LEXER CLASS ====================
 class Lexer {
 private:
-    std::string source;
+    string source;
     size_t position;
     size_t line;
     size_t column;
@@ -97,23 +89,23 @@ public:
 
     struct Token {
         TokenType type;
-        std::string value;
+        string value;
         int line;
         int column;
         
-        Token(TokenType t, const std::string& v, int l, int c)
+        Token(TokenType t, const string& v, int l, int c)
             : type(t), value(v), line(l), column(c) {}
         
         Token(TokenType t, int l, int c)
             : type(t), value(""), line(l), column(c) {}
     };
 
-    Lexer(const std::string& src) 
+    Lexer(const string& src) 
         : source(src), position(0), line(1), column(1), 
           source_length(src.length()) {}
     
-    std::vector<Token> tokenize() {
-        std::vector<Token> tokens;
+    vector<Token> tokenize() {
+        vector<Token> tokens;
         
         while (position < source_length) {
             skipWhitespace();
@@ -130,7 +122,7 @@ public:
                     advance();
                 }
                 
-                std::string text = source.substr(start, position - start);
+                string text = source.substr(start, position - start);
                 
                 if (text == "function") {
                     tokens.push_back(Token(TOK_FUNCTION, text, line, start_col));
@@ -161,7 +153,7 @@ public:
                     advance();
                 }
                 
-                std::string num = source.substr(start, position - start);
+                string num = source.substr(start, position - start);
                 tokens.push_back(Token(TOK_NUMBER, num, line, start_col));
                 continue;
             }
@@ -246,9 +238,9 @@ public:
                     if (match('&')) {
                         tokens.push_back(Token(TOK_AND, "&&", line, start_col));
                     } else {
-                        throw std::runtime_error("Unexpected character '&' at line " + 
-                                               std::to_string(line) + ", column " + 
-                                               std::to_string(start_col));
+                        throw runtime_error("Unexpected character '&' at line " + 
+                                               to_string(line) + ", column " + 
+                                               to_string(start_col));
                     }
                     break;
                     
@@ -257,16 +249,16 @@ public:
                     if (match('|')) {
                         tokens.push_back(Token(TOK_OR, "||", line, start_col));
                     } else {
-                        throw std::runtime_error("Unexpected character '|' at line " + 
-                                               std::to_string(line) + ", column " + 
-                                               std::to_string(start_col));
+                        throw runtime_error("Unexpected character '|' at line " + 
+                                               to_string(line) + ", column " + 
+                                               to_string(start_col));
                     }
                     break;
                     
                 default:
-                    throw std::runtime_error("Unexpected character '" + std::string(1, c) + 
-                                           "' at line " + std::to_string(line) + 
-                                           ", column " + std::to_string(start_col));
+                    throw runtime_error("Unexpected character '" + string(1, c) + 
+                                           "' at line " + to_string(line) + 
+                                           ", column " + to_string(start_col));
             }
         }
         
@@ -275,7 +267,7 @@ public:
     }
     
     // Helper function to convert token type to string
-    static std::string tokenTypeToString(TokenType type) {
+    static string tokenTypeToString(TokenType type) {
         switch (type) {
             case TOK_FUNCTION: return "FUNCTION";
             case TOK_MAIN: return "MAIN";
@@ -312,881 +304,751 @@ public:
     }
 };
 
-// ==================== AST NODES ====================
-class ASTNode {
-public:
-    virtual ~ASTNode() = default;
-    virtual void print(int indent = 0) const = 0;
-    virtual std::string nodeType() const = 0;
+using Token = Lexer::Token;
+static inline string tokName(const Token &t) {
+    return Lexer::tokenTypeToString(t.type);
+}
+
+// ---------- AST ----------
+struct AST {
+    struct Node { virtual ~Node() = default; };
+    using NodePtr = unique_ptr<Node>;
+
+    struct Expr : Node {};
+    struct Stmt : Node {};
+
+    struct Number : Expr {
+        int value;
+        Number(int v) : value(v) {}
+    };
+
+    struct Variable : Expr {
+        string name;
+        Variable(string n) : name(move(n)) {}
+    };
+
+    struct Binary : Expr {
+        string op;
+        NodePtr left, right;
+        Binary(string o, NodePtr l, NodePtr r)
+            : op(move(o)), left(move(l)), right(move(r)) {}
+    };
+
+    struct VarDecl : Stmt {
+        string name;
+        NodePtr init;
+        VarDecl(string n, NodePtr v) : name(move(n)), init(move(v)) {}
+    };
+
+    struct Assign : Stmt {
+        string name;
+        NodePtr expr;
+        Assign(string n, NodePtr e) : name(move(n)), expr(move(e)) {}
+    };
+
+    struct IfStmt : Stmt {
+        NodePtr cond;
+        vector<NodePtr> thenBody;
+        vector<NodePtr> elifConds;
+        vector<vector<NodePtr>> elifBodies;
+        vector<NodePtr> elseBody;
+    };
+
+    struct WhileStmt : Stmt {
+        NodePtr cond;
+        vector<NodePtr> body;
+    };
+
+    struct ReturnStmt : Stmt {
+        NodePtr expr;
+    };
+
+    struct Block : Node {
+        vector<NodePtr> stmts;
+    };
+
+    struct Function : Node {
+        string name;
+        vector<NodePtr> body;
+    };
 };
 
-class ProgramNode : public ASTNode {
-public:
-    std::vector<std::unique_ptr<ASTNode>> functions;
-    
-    void print(int indent = 0) const override {
-        std::string spaces(indent, ' ');
-        std::cout << spaces << "ProgramNode (" << functions.size() << " functions)\n";
-        for (const auto& func : functions) {
-            func->print(indent + 2);
-        }
-    }
-    
-    std::string nodeType() const override { return "Program"; }
-};
-
-class FunctionNode : public ASTNode {
-public:
-    std::string name;
-    std::unique_ptr<class BlockNode> body;
-    
-    void print(int indent = 0) const override {
-        std::string spaces(indent, ' ');
-        std::cout << spaces << "FunctionNode: " << name << "\n";
-        if (body) {
-            body->print(indent + 2);
-        }
-    }
-    
-    std::string nodeType() const override { return "Function"; }
-};
-
-class BlockNode : public ASTNode {
-public:
-    std::vector<std::unique_ptr<ASTNode>> statements;
-    
-    void print(int indent = 0) const override {
-        std::string spaces(indent, ' ');
-        std::cout << spaces << "BlockNode (" << statements.size() << " statements)\n";
-        for (const auto& stmt : statements) {
-            stmt->print(indent + 2);
-        }
-    }
-    
-    std::string nodeType() const override { return "Block"; }
-};
-
-class VarDeclNode : public ASTNode {
-public:
-    std::string type;
-    std::string name;
-    std::unique_ptr<ASTNode> initializer;
-    
-    void print(int indent = 0) const override {
-        std::string spaces(indent, ' ');
-        std::cout << spaces << "VarDeclNode: " << type << " " << name;
-        if (initializer) {
-            std::cout << " = ";
-            initializer->print(0);
-        } else {
-            std::cout << "\n";
-        }
-    }
-    
-    std::string nodeType() const override { return "VarDecl"; }
-};
-
-class AssignNode : public ASTNode {
-public:
-    std::string name;
-    std::unique_ptr<ASTNode> value;
-    
-    void print(int indent = 0) const override {
-        std::string spaces(indent, ' ');
-        std::cout << spaces << "AssignNode: " << name << " = ";
-        value->print(0);
-    }
-    
-    std::string nodeType() const override { return "Assign"; }
-};
-
-class IfNode : public ASTNode {
-public:
-    std::unique_ptr<ASTNode> condition;
-    std::unique_ptr<BlockNode> thenBlock;
-    std::vector<std::pair<std::unique_ptr<ASTNode>, std::unique_ptr<BlockNode>>> elifBlocks;
-    std::unique_ptr<BlockNode> elseBlock;
-    
-    void print(int indent = 0) const override {
-        std::string spaces(indent, ' ');
-        std::cout << spaces << "IfNode:\n";
-        
-        std::cout << spaces << "  Condition: ";
-        condition->print(0);
-        
-        std::cout << spaces << "  Then:\n";
-        if (thenBlock) thenBlock->print(indent + 4);
-        
-        for (size_t i = 0; i < elifBlocks.size(); i++) {
-            std::cout << spaces << "  Elif " << (i + 1) << ":\n";
-            std::cout << spaces << "    Condition: ";
-            elifBlocks[i].first->print(0);
-            elifBlocks[i].second->print(indent + 6);
-        }
-        
-        if (elseBlock) {
-            std::cout << spaces << "  Else:\n";
-            elseBlock->print(indent + 4);
-        }
-    }
-    
-    std::string nodeType() const override { return "If"; }
-};
-
-class WhileNode : public ASTNode {
-public:
-    std::unique_ptr<ASTNode> condition;
-    std::unique_ptr<BlockNode> body;
-    
-    void print(int indent = 0) const override {
-        std::string spaces(indent, ' ');
-        std::cout << spaces << "WhileNode:\n";
-        std::cout << spaces << "  Condition: ";
-        condition->print(0);
-        std::cout << spaces << "  Body:\n";
-        if (body) body->print(indent + 4);
-    }
-    
-    std::string nodeType() const override { return "While"; }
-};
-
-class ReturnNode : public ASTNode {
-public:
-    std::unique_ptr<ASTNode> value;
-    
-    void print(int indent = 0) const override {
-        std::string spaces(indent, ' ');
-        std::cout << spaces << "ReturnNode: ";
-        if (value) {
-            value->print(0);
-        } else {
-            std::cout << "void\n";
-        }
-    }
-    
-    std::string nodeType() const override { return "Return"; }
-};
-
-class BinaryOpNode : public ASTNode {
-public:
-    Lexer::Token op;
-    std::unique_ptr<ASTNode> left;
-    std::unique_ptr<ASTNode> right;
-    
-    void print(int indent = 0) const override {
-        std::string spaces(indent, ' ');
-        std::cout << spaces << "BinaryOpNode: " << op.value << "\n";
-        std::cout << spaces << "  Left: ";
-        left->print(0);
-        std::cout << spaces << "  Right: ";
-        right->print(0);
-    }
-    
-    std::string nodeType() const override { return "BinaryOp"; }
-};
-
-class IdentifierNode : public ASTNode {
-public:
-    std::string name;
-    
-    void print(int indent = 0) const override {
-        std::string spaces(indent, ' ');
-        std::cout << spaces << "IdentifierNode: " << name << "\n";
-    }
-    
-    std::string nodeType() const override { return "Identifier"; }
-};
-
-class NumberNode : public ASTNode {
-public:
-    int value;
-    
-    void print(int indent = 0) const override {
-        std::string spaces(indent, ' ');
-        std::cout << spaces << "NumberNode: " << value << "\n";
-    }
-    
-    std::string nodeType() const override { return "Number"; }
-};
-
-// ==================== PARSER ====================
+// ---------- Parser ----------
 class Parser {
-private:
-    std::vector<Lexer::Token> tokens;
-    size_t current;
-    
-    const Lexer::Token& peek() const {
-        return tokens[current];
+    const vector<Token> &tokens;
+    size_t i = 0;
+
+    const Token &peekToken() const {
+        if (i >= tokens.size()) throw runtime_error("Unexpected end of tokens");
+        return tokens[i];
     }
-    
-    const Lexer::Token& advance() {
-        if (!isAtEnd()) {
-            return tokens[current++];
-        }
-        return tokens.back(); // Return EOF token
-    }
-    
-    bool check(Lexer::TokenType type) const {
-        if (isAtEnd()) return false;
-        return peek().type == type;
-    }
-    
-    bool match(Lexer::TokenType type) {
-        if (check(type)) {
-            advance();
-            return true;
-        }
+    bool atEnd() const { return i >= tokens.size() || tokName(tokens[i]) == "EOF"; }
+
+    bool acceptName(const string &name) {
+        if (!atEnd() && tokName(tokens[i]) == name) { ++i; return true; }
         return false;
     }
-    
-    Lexer::Token consume(Lexer::TokenType type, const std::string& message) {
-        if (check(type)) {
-            return advance();
-        }
-        throw std::runtime_error(message + " at line " + std::to_string(peek().line));
-    }
-    
-    bool isAtEnd() const {
-        return peek().type == Lexer::TOK_EOF;
-    }
-    
-    void printCurrentToken() const {
-        if (!isAtEnd()) {
-            const auto& token = peek();
-            std::cout << "Current token: " << Lexer::tokenTypeToString(token.type);
-            if (!token.value.empty()) {
-                std::cout << " ('" << token.value << "')";
-            }
-            std::cout << " at line " << token.line << "\n";
+    void expectName(const string &name) {
+        if (!acceptName(name)) {
+            stringstream ss;
+            ss << "Expected token " << name;
+            if (!atEnd()) ss << " but got " << tokName(tokens[i]) << "('" << tokens[i].value << "')";
+            throw runtime_error(ss.str());
         }
     }
 
 public:
-    Parser(std::vector<Lexer::Token> tokens) : tokens(std::move(tokens)), current(0) {}
-    
-    std::unique_ptr<ProgramNode> parse() {
-        auto program = std::make_unique<ProgramNode>();
-        
-        while (!isAtEnd()) {
-            if (match(Lexer::TOK_FUNCTION)) {
-                program->functions.push_back(parseFunction());
-            } else {
-                // Skip unexpected tokens for error recovery
-                std::cerr << "Warning: Expected function declaration, got " 
-                         << Lexer::tokenTypeToString(peek().type) << " at line " 
-                         << peek().line << ". Skipping.\n";
-                advance();
-            }
+    Parser(const vector<Token> &toks) : tokens(toks) {}
+
+    unique_ptr<AST::Function> parseProgram() {
+        // function main() { ... }
+        expectName("FUNCTION");
+        expectName("MAIN");
+        expectName("LPAREN");
+        expectName("RPAREN");
+        expectName("LBRACE");
+
+        auto fn = make_unique<AST::Function>();
+        fn->name = "main";
+
+        while (!acceptName("RBRACE")) {
+            fn->body.push_back(parseStatement());
         }
-        
-        return program;
-    }
-    
-    void printTokens() const {
-        std::cout << "\n=== TOKEN LIST ===\n";
-        for (size_t i = 0; i < tokens.size(); i++) {
-            const auto& token = tokens[i];
-            std::cout << "[" << i << "] ";
-            if (i == current) std::cout << "-> ";
-            else std::cout << "   ";
-            
-            std::cout << Lexer::tokenTypeToString(token.type);
-            if (!token.value.empty()) {
-                std::cout << " ('" << token.value << "')";
-            }
-            std::cout << " at line " << token.line << ", col " << token.column << "\n";
-        }
-        std::cout << "==================\n\n";
+        return fn;
     }
 
 private:
-    std::unique_ptr<FunctionNode> parseFunction() {
-        auto func = std::make_unique<FunctionNode>();
-        
-        // Function name
-        if (check(Lexer::TOK_MAIN)) {
-            // Handle "main" as a keyword
-            auto token = advance();
-            func->name = token.value;
-        } else {
-            auto nameToken = consume(Lexer::TOK_IDENTIFIER, "Expected function name");
-            func->name = nameToken.value;
-        }
-        
-        // Parameters
-        consume(Lexer::TOK_LPAREN, "Expected '(' after function name");
-        consume(Lexer::TOK_RPAREN, "Expected ')'");
-        
-        // Function body
-        func->body = parseBlock();
-        
-        return func;
+    AST::NodePtr parseStatement() {
+        if (tokName(peekToken()) == "INT") return parseVarDecl();
+        if (tokName(peekToken()) == "IDENTIFIER") return parseAssign();
+        if (tokName(peekToken()) == "IF") return parseIf();
+        if (tokName(peekToken()) == "WHILE") return parseWhile();
+        if (tokName(peekToken()) == "RETURN") return parseReturn();
+        stringstream ss;
+        ss << "Unknown statement start: " << tokName(peekToken()) << "('" << peekToken().value << "')";
+        throw runtime_error(ss.str());
     }
-    
-    std::unique_ptr<BlockNode> parseBlock() {
-        consume(Lexer::TOK_LBRACE, "Expected '{' to start block");
-        
-        auto block = std::make_unique<BlockNode>();
-        
-        while (!check(Lexer::TOK_RBRACE) && !isAtEnd()) {
-            try {
-                block->statements.push_back(parseStatement());
-            } catch (const std::runtime_error& e) {
-                std::cerr << "Error parsing statement: " << e.what() << "\n";
-                // Skip to next statement (look for semicolon or brace)
-                while (!check(Lexer::TOK_SEMICOLON) && 
-                       !check(Lexer::TOK_RBRACE) && 
-                       !isAtEnd()) {
-                    advance();
-                }
-                if (check(Lexer::TOK_SEMICOLON)) advance();
-            }
-        }
-        
-        consume(Lexer::TOK_RBRACE, "Expected '}' to end block");
-        return block;
+
+    AST::NodePtr parseVarDecl() {
+        expectName("INT");
+        if (tokName(peekToken()) != "IDENTIFIER") throw runtime_error("Expected identifier after int");
+        string name = peekToken().value; ++i;
+        expectName("ASSIGN");
+        auto init = parseExpression();
+        expectName("SEMICOLON");
+        return make_unique<AST::VarDecl>(name, move(init));
     }
-    
-    std::unique_ptr<ASTNode> parseStatement() {
-        if (check(Lexer::TOK_INT)) {
-            return parseVarDecl();
-        }
-        if (check(Lexer::TOK_IF)) {
-            return parseIf();
-        }
-        if (check(Lexer::TOK_WHILE)) {
-            return parseWhile();
-        }
-        if (check(Lexer::TOK_RETURN)) {
-            return parseReturn();
-        }
-        
-        // Check for assignment: identifier followed by '='
-        if (check(Lexer::TOK_IDENTIFIER)) {
-            // Look ahead to see if next token is '='
-            if (current + 1 < tokens.size() && 
-                tokens[current + 1].type == Lexer::TOK_ASSIGN) {
-                return parseAssign();
-            }
-        }
-        
-        throw std::runtime_error("Expected statement, got " + 
-                                Lexer::tokenTypeToString(peek().type));
+
+    AST::NodePtr parseAssign() {
+        string name = peekToken().value; ++i;
+        expectName("ASSIGN");
+        auto expr = parseExpression();
+        expectName("SEMICOLON");
+        return make_unique<AST::Assign>(name, move(expr));
     }
-    
-    std::unique_ptr<VarDeclNode> parseVarDecl() {
-        consume(Lexer::TOK_INT, "Expected 'int'");
-        
-        auto varDecl = std::make_unique<VarDeclNode>();
-        varDecl->type = "int";
-        
-        auto nameToken = consume(Lexer::TOK_IDENTIFIER, "Expected variable name");
-        varDecl->name = nameToken.value;
-        
-        if (match(Lexer::TOK_ASSIGN)) {
-            varDecl->initializer = parseExpression();
+
+    AST::NodePtr parseIf() {
+        expectName("IF");
+        expectName("LPAREN");
+        auto cond = parseExpression();
+        expectName("RPAREN");
+        expectName("LBRACE");
+        vector<AST::NodePtr> thenBody;
+        while (!acceptName("RBRACE")) thenBody.push_back(parseStatement());
+
+        auto node = make_unique<AST::IfStmt>();
+        node->cond = move(cond);
+        node->thenBody = move(thenBody);
+
+        // optional elif
+        if (!atEnd() && tokName(peekToken()) == "ELIF") {
+            while (!atEnd() && tokName(peekToken()) == "ELIF") {
+            expectName("ELIF");
+            expectName("LPAREN");
+            auto elifCond = parseExpression();
+            expectName("RPAREN");
+            expectName("LBRACE");
+            vector<AST::NodePtr> elifBody;
+            while (!acceptName("RBRACE")) elifBody.push_back(parseStatement());
+            node->elifConds.push_back(move(elifCond));
+            node->elifBodies.push_back(move(elifBody));
         }
-        
-        consume(Lexer::TOK_SEMICOLON, "Expected ';' after variable declaration");
-        return varDecl;
-    }
-    
-    std::unique_ptr<AssignNode> parseAssign() {
-        auto assign = std::make_unique<AssignNode>();
-        
-        auto nameToken = consume(Lexer::TOK_IDENTIFIER, "Expected variable name");
-        assign->name = nameToken.value;
-        
-        consume(Lexer::TOK_ASSIGN, "Expected '=' after variable name");
-        assign->value = parseExpression();
-        
-        consume(Lexer::TOK_SEMICOLON, "Expected ';' after assignment");
-        return assign;
-    }
-    
-    std::unique_ptr<IfNode> parseIf() {
-        auto ifNode = std::make_unique<IfNode>();
-        
-        consume(Lexer::TOK_IF, "Expected 'if'");
-        consume(Lexer::TOK_LPAREN, "Expected '(' after 'if'");
-        ifNode->condition = parseExpression();
-        consume(Lexer::TOK_RPAREN, "Expected ')' after condition");
-        
-        ifNode->thenBlock = parseBlock();
-        
-        // Parse elif blocks
-        while (match(Lexer::TOK_ELIF)) {
-            consume(Lexer::TOK_LPAREN, "Expected '(' after 'elif'");
-            auto condition = parseExpression();
-            consume(Lexer::TOK_RPAREN, "Expected ')' after condition");
-            auto block = parseBlock();
-            ifNode->elifBlocks.emplace_back(std::move(condition), std::move(block));
+
         }
-        
-        // Parse else block
-        if (match(Lexer::TOK_ELSE)) {
-            ifNode->elseBlock = parseBlock();
+
+        // optional else
+        if (!atEnd() && tokName(peekToken()) == "ELSE") {
+            expectName("ELSE");
+            expectName("LBRACE");
+            while (!acceptName("RBRACE")) node->elseBody.push_back(parseStatement());
         }
-        
-        return ifNode;
+
+        return node;
     }
-    
-    std::unique_ptr<WhileNode> parseWhile() {
-        auto whileNode = std::make_unique<WhileNode>();
-        
-        consume(Lexer::TOK_WHILE, "Expected 'while'");
-        consume(Lexer::TOK_LPAREN, "Expected '(' after 'while'");
-        whileNode->condition = parseExpression();
-        consume(Lexer::TOK_RPAREN, "Expected ')' after condition");
-        
-        whileNode->body = parseBlock();
-        return whileNode;
+
+    AST::NodePtr parseWhile() {
+        expectName("WHILE");
+        expectName("LPAREN");
+        auto cond = parseExpression();
+        expectName("RPAREN");
+        expectName("LBRACE");
+        auto w = make_unique<AST::WhileStmt>();
+        w->cond = move(cond);
+        while (!acceptName("RBRACE")) w->body.push_back(parseStatement());
+        return w;
     }
-    
-    std::unique_ptr<ReturnNode> parseReturn() {
-        auto returnNode = std::make_unique<ReturnNode>();
-        
-        consume(Lexer::TOK_RETURN, "Expected 'return'");
-        
-        if (!check(Lexer::TOK_SEMICOLON)) {
-            returnNode->value = parseExpression();
+
+    AST::NodePtr parseReturn() {
+        expectName("RETURN");
+        auto expr = parseExpression();
+        expectName("SEMICOLON");
+        auto r = make_unique<AST::ReturnStmt>();
+        r->expr = move(expr);
+        return r;
+    }
+
+    // Expression parsing with precedence
+    // logical_and -> equality ('AND' equality)*
+    // equality -> rel (('EQ') rel)*
+    // rel -> add (('<'|'>') add)*
+    // add -> mul (('+'|'-') mul)*
+    // mul -> primary (('*'|'/') primary)*
+    // primary -> NUMBER | IDENTIFIER | LPAREN expr RPAREN
+
+    AST::NodePtr parseExpression() { return parseAssignment(); }
+
+    AST::NodePtr parseAssignment() {
+        auto left = parseLogicalOr();
+        if (!atEnd() && tokName(peekToken()) == "ASSIGN") { // = 
+            ++i;
+            auto right = parseAssignment();
+            left = make_unique<AST::Binary>("=", move(left), move(right));
         }
-        
-        consume(Lexer::TOK_SEMICOLON, "Expected ';' after return");
-        return returnNode;
+        return left;
     }
-    
-    std::unique_ptr<ASTNode> parseExpression() {
-        return parseLogicalOr();
-    }
-    
-    std::unique_ptr<ASTNode> parseLogicalOr() {
-        auto expr = parseLogicalAnd();
-        
-        while (match(Lexer::TOK_OR)) {
-            auto op = tokens[current - 1];
+
+    AST::NodePtr parseLogicalOr() {
+        auto left = parseLogicalAnd();
+        while (!atEnd() && tokName(peekToken()) == "OR") { 
+            ++i;
             auto right = parseLogicalAnd();
-            
-            auto node = std::make_unique<BinaryOpNode>();
-            node->op = op;
-            node->left = std::move(expr);
-            node->right = std::move(right);
-            expr = std::move(node);
+            left = make_unique<AST::Binary>("||", move(left), move(right));
         }
-        
-        return expr;
+        return left;
     }
-    
-    std::unique_ptr<ASTNode> parseLogicalAnd() {
-        auto expr = parseEquality();
-        
-        while (match(Lexer::TOK_AND)) {
-            auto op = tokens[current - 1];
+
+    AST::NodePtr parseLogicalAnd() {
+        auto left = parseEquality();
+        while (!atEnd() && tokName(peekToken()) == "AND") {
+            string op = "&&";
+            ++i;
             auto right = parseEquality();
-            
-            auto node = std::make_unique<BinaryOpNode>();
-            node->op = op;
-            node->left = std::move(expr);
-            node->right = std::move(right);
-            expr = std::move(node);
+            left = make_unique<AST::Binary>(op, move(left), move(right));
         }
-        
-        return expr;
+        return left;
     }
-    
-    std::unique_ptr<ASTNode> parseEquality() {
-        auto expr = parseComparison();
-        
-        while (match(Lexer::TOK_EQ) || match(Lexer::TOK_NE)) {
-            auto op = tokens[current - 1];
-            auto right = parseComparison();
-            
-            auto node = std::make_unique<BinaryOpNode>();
-            node->op = op;
-            node->left = std::move(expr);
-            node->right = std::move(right);
-            expr = std::move(node);
+
+    AST::NodePtr parseEquality() {
+        auto left = parseRel();
+        while (!atEnd() && tokName(peekToken()) == "EQ") {
+            string op = "==";
+            ++i;
+            auto right = parseRel();
+            left = make_unique<AST::Binary>(op, move(left), move(right));
         }
-        
-        return expr;
+        return left;
     }
-    
-    std::unique_ptr<ASTNode> parseComparison() {
-        auto expr = parseTerm();
-        
-        while (match(Lexer::TOK_LT) || match(Lexer::TOK_GT) || 
-               match(Lexer::TOK_LE) || match(Lexer::TOK_GE)) {
-            auto op = tokens[current - 1];
-            auto right = parseTerm();
-            
-            auto node = std::make_unique<BinaryOpNode>();
-            node->op = op;
-            node->left = std::move(expr);
-            node->right = std::move(right);
-            expr = std::move(node);
+
+    AST::NodePtr parseRel() {
+        auto left = parseAdd();
+        while (!atEnd() && (tokName(peekToken()) == "LT" || tokName(peekToken()) == "GT")) {
+            string op = tokName(peekToken()) == "LT" ? "<" : ">";
+            ++i;
+            auto right = parseAdd();
+            left = make_unique<AST::Binary>(op, move(left), move(right));
         }
-        
-        return expr;
+        return left;
     }
-    
-    std::unique_ptr<ASTNode> parseTerm() {
-        auto expr = parseFactor();
-        
-        while (match(Lexer::TOK_PLUS) || match(Lexer::TOK_MINUS)) {
-            auto op = tokens[current - 1];
-            auto right = parseFactor();
-            
-            auto node = std::make_unique<BinaryOpNode>();
-            node->op = op;
-            node->left = std::move(expr);
-            node->right = std::move(right);
-            expr = std::move(node);
+
+    AST::NodePtr parseAdd() {
+        auto left = parseMul();
+        while (!atEnd() && (tokName(peekToken()) == "+" || tokName(peekToken()) == "PLUS" || tokName(peekToken()) == "MINUS" || tokName(peekToken()) == "-")) {
+            string t = tokName(peekToken());
+            string op = (t == "MINUS" || t == "-") ? "-" : "+";
+            ++i;
+            auto right = parseMul();
+            left = make_unique<AST::Binary>(op, move(left), move(right));
         }
-        
-        return expr;
+        return left;
     }
-    
-    std::unique_ptr<ASTNode> parseFactor() {
-        auto expr = parseUnary();
-        
-        while (match(Lexer::TOK_MUL) || match(Lexer::TOK_DIV)) {
-            auto op = tokens[current - 1];
-            auto right = parseUnary();
-            
-            auto node = std::make_unique<BinaryOpNode>();
-            node->op = op;
-            node->left = std::move(expr);
-            node->right = std::move(right);
-            expr = std::move(node);
+
+    AST::NodePtr parseMul() {
+        auto left = parsePrimary();
+        while (!atEnd() && (tokName(peekToken()) == "MUL" || tokName(peekToken()) == "*" || tokName(peekToken()) == "DIV" || tokName(peekToken()) == "/")) {
+            string t = tokName(peekToken());
+            string op = (t == "DIV" || t == "/") ? "/" : "*";
+            ++i;
+            auto right = parsePrimary();
+            left = make_unique<AST::Binary>(op, move(left), move(right));
         }
-        
-        return expr;
+        return left;
     }
-    
-    std::unique_ptr<ASTNode> parseUnary() {
-        if (match(Lexer::TOK_MINUS) || match(Lexer::TOK_NOT)) {
-            auto op = tokens[current - 1];
-            auto right = parseUnary();
-            
-            // For negative numbers: -5 becomes 0 - 5
-            if (op.type == Lexer::TOK_MINUS) {
-                auto zero = std::make_unique<NumberNode>();
-                zero->value = 0;
-                
-                auto node = std::make_unique<BinaryOpNode>();
-                node->op = op;
-                node->left = std::move(zero);
-                node->right = std::move(right);
-                return node;
-            }
-            // For logical NOT: !expr
-            else {
-                // We'll implement NOT as comparison with 0
-                auto zero = std::make_unique<NumberNode>();
-                zero->value = 0;
-                
-                auto node = std::make_unique<BinaryOpNode>();
-                node->op = op;
-                node->left = std::move(right);
-                node->right = std::move(zero);
-                return node;
-            }
+
+    AST::NodePtr parsePrimary() {
+        if (atEnd()) throw runtime_error("Unexpected end in primary");
+        auto &tk = peekToken();
+        auto name = tokName(tk);
+
+        if (name == "NUMBER") {
+            int val = 0;
+            try { val = stoi(tk.value); } catch(...) { val = 0; }
+            ++i;
+            return make_unique<AST::Number>(val);
         }
-        
-        return parsePrimary();
-    }
-    
-    std::unique_ptr<ASTNode> parsePrimary() {
-        if (match(Lexer::TOK_NUMBER)) {
-            auto num = std::make_unique<NumberNode>();
-            try {
-                num->value = std::stoi(tokens[current - 1].value);
-            } catch (...) {
-                throw std::runtime_error("Invalid number: " + tokens[current - 1].value);
-            }
-            return num;
+        if (name == "IDENTIFIER") {
+            string nm = tk.value;
+            ++i;
+            return make_unique<AST::Variable>(nm);
         }
-        
-        if (match(Lexer::TOK_IDENTIFIER)) {
-            auto ident = std::make_unique<IdentifierNode>();
-            ident->name = tokens[current - 1].value;
-            return ident;
+        if (name == "LPAREN") {
+            ++i;
+            auto e = parseExpression();
+            expectName("RPAREN");
+            return e;
         }
-        
-        if (match(Lexer::TOK_LPAREN)) {
-            auto expr = parseExpression();
-            consume(Lexer::TOK_RPAREN, "Expected ')' after expression");
-            return expr;
-        }
-        
-        throw std::runtime_error("Expected expression, got " + 
-                                Lexer::tokenTypeToString(peek().type));
+        throw runtime_error(string("Invalid primary: ") + name + "('" + tk.value + "')");
     }
 };
 
-// ==================== TESTER ====================
-class ParserTester {
-public:
-    static void testWithFile(const std::string& filename) {
-        std::cout << "\n" << std::string(60, '=') << "\n";
-        std::cout << "TESTING PARSER WITH FILE: " << filename << "\n";
-        std::cout << std::string(60, '=') << "\n";
-        
-        std::ifstream file(filename);
-        if (!file.is_open()) {
-            std::cerr << "Error: Cannot open file " << filename << "\n";
+struct CodeGen {
+    vector<string> out;
+    vector<string> dataLines;
+    int labelCount = 0;
+
+    struct Variable {
+        bool isArray;
+        int addr;       // memory address (if spilled or array base)
+        int size;       // array size
+    };
+
+    //────────────────────────────────────────────
+    //  REGISTER FILE
+    //────────────────────────────────────────────
+    struct RegisterFile {
+
+        // Variable registers (spillable)
+        vector<string> varRegs = {
+            "$s0","$s1","$s2","$s3","$s4","$s5","$s6","$s7"
+        };
+
+        // Temporary registers (NOT spillable)
+        vector<string> tempRegs = {
+            "$t0","$t1","$t2","$t3","$t4","$t5","$t6","$t7"
+        };
+
+        unordered_set<string> usedTemp;
+
+        unordered_map<string,string> varToReg;
+        unordered_map<string,string> regToVar;
+
+        unordered_map<string,Variable> memory;
+        int memAddr = 0;
+
+        //────────────────────────────────────────────
+        // Allocate variable register
+        //────────────────────────────────────────────
+        string alloc(const string &var, CodeGen *cg, bool isArray=false, int arraySize=0) {
+
+            // Already assigned?
+            if (varToReg.count(var))
+                return varToReg[var];
+
+            // Free register?
+            for (auto &r : varRegs) {
+                if (!regToVar.count(r)) {
+                    assignRegister(var, r, isArray, arraySize);
+                    return r;
+                }
+            }
+
+            string r = varRegs[0];
+            string spilledVar = regToVar[r];
+
+            spill(spilledVar, r, cg);
+
+            assignRegister(var, r, isArray, arraySize);
+            return r;
+        }
+
+        //────────────────────────────────────────────
+        // Assign register mapping
+        //────────────────────────────────────────────
+        void assignRegister(const string &var, const string &r,
+                            bool isArray, int arraySize)
+        {
+            varToReg[var] = r;
+            regToVar[r]   = var;
+
+            if (isArray) {
+                int base = memAddr;
+                memAddr += arraySize * 4;
+                memory[var] = {true, base, arraySize};
+            } else {
+                memory[var] = {false, -1, 1};
+            }
+        }
+
+        //────────────────────────────────────────────
+        // Spill variable from register r
+        //────────────────────────────────────────────
+        void spill(const string &var, const string &r, CodeGen *cg) {
+            Variable &v = memory[var];
+
+            // Arrays already live in memory
+            if (!v.isArray) {
+                if (v.addr == -1) {
+                    v.addr = memAddr;
+                    memAddr += 4;
+                }
+                cg->emit("la $at, " + to_string(v.addr));
+                cg->emit("sw " + r + ", 0($at)");
+            }
+
+            varToReg.erase(var);
+            regToVar.erase(r);
+        }
+
+        //────────────────────────────────────────────
+        // Allocate temporary register
+        //────────────────────────────────────────────
+        string allocTemp() {
+            for (auto &r : tempRegs) {
+                if (!usedTemp.count(r)) {
+                    usedTemp.insert(r);
+                    return r;
+                }
+            }
+            throw runtime_error("Out of temporary registers");
+        }
+
+        void freeTemp(const string &r) {
+            usedTemp.erase(r);
+        }
+
+        bool has(const string &var) { return varToReg.count(var); }
+
+        string reg(const string &var) { return varToReg[var]; }
+
+    } rf;
+    void writeToFile(const string &filename) {
+        ofstream fout(filename);
+        for (auto &s : out) fout << s << "\n";
+        fout.close();
+    }
+    //────────────────────────────────────────────
+    // Helpers
+    //────────────────────────────────────────────
+    void emit(const string &s) { out.push_back(s); }
+
+    string genLabel(const string &base) {
+        return base + "_" + to_string(labelCount++);
+    }
+
+    //────────────────────────────────────────────
+    // MAIN ENTRY
+    //────────────────────────────────────────────
+    void generate(AST::Function &fn) {
+        collectVars(fn);
+
+        if (!dataLines.empty()) {
+            out.push_back(".data");
+            for (auto &d : dataLines) out.push_back(d);
+            out.push_back("");
+        }
+
+        out.push_back(".text");
+        out.push_back(".globl main");
+        out.push_back("main:");
+
+        for (auto &s : fn.body) genStmt(s.get());
+
+        out.push_back("syscall");
+    }
+
+    //────────────────────────────────────────────
+    // Load variable into register
+    //────────────────────────────────────────────
+    string loadVar(const string &var) {
+        if (rf.has(var))
+            return rf.reg(var);
+
+        string r = rf.alloc(var, this);
+        Variable &v = rf.memory[var];
+
+        // If scalar spilled earlier
+        if (!v.isArray && v.addr != -1) {
+            emit("la $at, " + to_string(v.addr));
+            emit("lw " + r + ", 0($at)");
+        }
+
+        return r;
+    }
+
+    //────────────────────────────────────────────
+    // STORE VARIABLE
+    //────────────────────────────────────────────
+    void storeVar(const string &var, const string &src) {
+        string r = rf.alloc(var, this);
+        Variable &v = rf.memory[var];
+
+        if (r != src)
+            emit("move " + r + ", " + src);
+
+        if (!v.isArray) {
+            if (v.addr == -1) {
+                v.addr = rf.memAddr;
+                rf.memAddr += 4;
+            }
+            emit("la $at, " + to_string(v.addr));
+            emit("sw " + r + ", 0($at)");
+        } else {
+            emit("la $at, " + to_string(v.addr));
+            emit("sw " + r + ", 0($at)");
+        }
+    }
+
+    void genStmt(AST::Node *node) {
+
+        if (auto vd = dynamic_cast<AST::VarDecl*>(node)) {
+            string r = genExpr(vd->init.get());
+            storeVar(vd->name, r);
+            rf.freeTemp(r);
             return;
         }
-        
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        std::string source = buffer.str();
-        file.close();
-        
-        testSource(source);
-    }
-    
-    static void testSource(const std::string& source) {
-        std::cout << "\nSOURCE CODE:\n";
-        std::cout << std::string(40, '-') << "\n";
-        std::cout << source;
-        std::cout << std::string(40, '-') << "\n";
-        
-        try {
-            // Step 1: Lexical analysis
-            Lexer lexer(source);
-            auto tokens = lexer.tokenize();
-            std::cout << "\n✅ Lexer: Found " << tokens.size() << " tokens\n";
-            
-            // Step 2: Parsing
-            Parser parser(tokens);
-            parser.printTokens();  // Show all tokens
-            
-            auto program = parser.parse();
-            std::cout << "✅ Parser: Successfully built AST\n";
-            
-            // Step 3: AST Analysis
-            std::cout << "\n=== AST ANALYSIS ===\n";
-            analyzeAST(program.get());
-            
-            // Step 4: Print AST
-            std::cout << "\n=== AST STRUCTURE ===\n";
-            program->print();
-            
-        } catch (const std::exception& e) {
-            std::cerr << "\n❌ ERROR: " << e.what() << "\n";
+
+        if (auto as = dynamic_cast<AST::Assign*>(node)) {
+            string r = genExpr(as->expr.get());
+            storeVar(as->name, r);
+            rf.freeTemp(r);
+            return;
         }
-    }
-    
-    static void runTestSuite() {
-        std::cout << "\n" << std::string(60, '=') << "\n";
-        std::cout << "PARSER TEST SUITE\n";
-        std::cout << std::string(60, '=') << "\n";
-        
-        // Test 1: Simple program
-        std::cout << "\n[TEST 1] Simple program\n";
-        testSource(R"(
-function main() {
-    int x = 5;
-    return x;
-}
-)");
-        
-        // Test 2: If-elif-else
-        std::cout << "\n\n[TEST 2] If-elif-else\n";
-        testSource(R"(
-function main() {
-    int score = 85;
-    
-    if (score >= 90) {
-        return 1;
-    } elif (score >= 80) {
-        return 2;
-    } elif (score >= 70) {
-        return 3;
-    } else {
-        return 4;
-    }
-}
-)");
-        
-        // Test 3: While loop
-        std::cout << "\n\n[TEST 3] While loop\n";
-        testSource(R"(
-function main() {
-    int i = 0;
-    int sum = 0;
-    
-    while (i < 10) {
-        sum = sum + i;
-        i = i + 1;
-    }
-    
-    return sum;
-}
-)");
-        
-        // Test 4: Complex expressions
-        std::cout << "\n\n[TEST 4] Complex expressions\n";
-        testSource(R"(
-function main() {
-    int a = 10;
-    int b = 20;
-    int c = 30;
-    
-    if (a < b && b < c || a == 10) {
-        return (a + b) * c / 2;
-    }
-    
-    return -1;
-}
-)");
-        
-        // Test 5: Nested control structures
-        std::cout << "\n\n[TEST 5] Nested control structures\n";
-        testSource(R"(
-function main() {
-    int x = 5;
-    
-    if (x > 0) {
-        while (x < 100) {
-            if (x % 2 == 0) {
-                x = x * 2;
-            } else {
-                x = x + 1;
+
+        if (auto ifs = dynamic_cast<AST::IfStmt*>(node)) {
+            string Lelse = genLabel("ELSE");
+            string Lend  = genLabel("ENDIF");
+
+            // معالجة شرط 'if' الأول
+            genCondJumpFalse(ifs->cond.get(), Lelse);
+            for (auto &s : ifs->thenBody) genStmt(s.get());
+            emit("j " + Lend);
+
+            // معالجة الشروط الخاصة بـ 'elif'
+            for (size_t i = 0; i < ifs->elifConds.size(); ++i) {
+                string Lelif = genLabel("ELIF" + to_string(i));  // لكل 'elif' علامة خاصة
+                emit(Lelse + ":");
+                genCondJumpFalse(ifs->elifConds[i].get(), Lelif);
+                for (auto &s : ifs->elifBodies[i]) genStmt(s.get());
+                emit("j " + Lend);
+                emit(Lelif + ":");
             }
+
+            // معالجة الجسم الخاص بـ 'else'
+            emit(Lelse + ":");
+            for (auto &s : ifs->elseBody) genStmt(s.get());
+
+            emit(Lend + ":");
+            return;
         }
-    }
-    
-    return x;
-}
-)");
-    }
-    
-private:
-    static void analyzeAST(ASTNode* node) {
-        std::map<std::string, int> nodeCounts;
-        countNodes(node, nodeCounts);
+
         
-        std::cout << "Node statistics:\n";
-        for (const auto& [type, count] : nodeCounts) {
-            std::cout << "  " << type << ": " << count << "\n";
+        if (auto w = dynamic_cast<AST::WhileStmt*>(node)) {
+            string Lstart = genLabel("WHILE");
+            string Lend   = genLabel("ENDW");
+
+            emit(Lstart + ":");
+            genCondJumpFalse(w->cond.get(), Lend);
+
+            for (auto &s : w->body) genStmt(s.get());
+            emit("j " + Lstart);
+
+            emit(Lend + ":");
+            return;
         }
-        
-        // Additional validation
-        if (auto program = dynamic_cast<ProgramNode*>(node)) {
-            std::cout << "\nProgram validation:\n";
-            std::cout << "  Functions: " << program->functions.size() << "\n";
-            
-            bool hasMain = false;
-            for (const auto& func : program->functions) {
-                if (auto fn = dynamic_cast<FunctionNode*>(func.get())) {
-                    if (fn->name == "main") hasMain = true;
-                    std::cout << "    - " << fn->name << "\n";
+
+        if (auto r = dynamic_cast<AST::ReturnStmt*>(node)) {
+            string reg = genExpr(r->expr.get());
+            emit("move $v0, " + reg);
+            rf.freeTemp(reg);
+            emit("syscall");
+            return;
+        }
+
+        throw runtime_error("Unhandled statement!");
+    }
+
+
+    string genExpr(AST::Node *node) {
+
+        if (auto num = dynamic_cast<AST::Number*>(node)) {
+            string r = rf.allocTemp();
+            emit("li " + r + ", " + to_string(num->value));
+            return r;
+        }
+
+        if (auto var = dynamic_cast<AST::Variable*>(node)) {
+            return loadVar(var->name);
+        }
+
+        if (auto bin = dynamic_cast<AST::Binary*>(node)) {
+
+            string L = genExpr(bin->left.get());
+            string R = genExpr(bin->right.get());
+
+            string dst = rf.allocTemp();
+
+            string op = bin->op;
+
+            if (op == "+") emit("add " + dst + ", " + L + ", " + R);
+            else if (op == "-") emit("sub " + dst + ", " + L + ", " + R);
+            else if (op == "*") emit("mul " + dst + ", " + L + ", " + R);
+            else if (op == "/") {
+                emit("div " + L + ", " + R);
+                emit("mflo " + dst);
+            }
+            else if (op == "<") emit("slt " + dst + ", " + L + ", " + R);
+            else if (op == ">") emit("slt " + dst + ", " + R + ", " + L);
+            else if (op == "==") {
+                string Lt = genLabel("TRUE");
+                string Le = genLabel("END");
+                emit("beq " + L + ", " + R + ", " + Lt);
+                emit("li " + dst + ", 0");
+                emit("j " + Le);
+                emit(Lt + ":");
+                emit("li " + dst + ", 1");
+                emit(Le + ":");
+            }
+
+            rf.freeTemp(L);
+            rf.freeTemp(R);
+
+            return dst;
+        }
+
+        throw runtime_error("Unhandled expression");
+    }
+
+    //────────────────────────────────────────────
+    // Boolean logic for if/while
+    //────────────────────────────────────────────
+    void genCondJumpFalse(AST::Node *n, const string &label) {
+        string r = genExpr(n);
+        emit("beq " + r + ", $zero, " + label);
+        rf.freeTemp(r);
+    }
+
+    //────────────────────────────────────────────
+    // Collect variables into .data
+    //────────────────────────────────────────────
+    void collectVars(AST::Function &fn) {
+        unordered_set<string> seen;
+
+        function<void(AST::Node*)> walk = [&](AST::Node *n) {
+            if (!n) return;
+
+            if (auto vd = dynamic_cast<AST::VarDecl*>(n)) {
+                if (!seen.count(vd->name)) {
+                    dataLines.push_back(vd->name + ": .word 0");
+                    seen.insert(vd->name);
+                }
+                walk(vd->init.get());
+            }
+            else if (auto as = dynamic_cast<AST::Assign*>(n)) {
+                if (!seen.count(as->name)) {
+                    dataLines.push_back(as->name + ": .word 0");
+                    seen.insert(as->name);
+                }
+                walk(as->expr.get());
+            }
+            else if (auto bin = dynamic_cast<AST::Binary*>(n)) {
+                walk(bin->left.get());
+                walk(bin->right.get());
+            }
+            else if (auto v = dynamic_cast<AST::Variable*>(n)) {
+                if (!seen.count(v->name)) {
+                    dataLines.push_back(v->name + ": .word 0");
+                    seen.insert(v->name);
                 }
             }
-            
-            if (hasMain) {
-                std::cout << "  ✅ Has main function\n";
-            } else {
-                std::cout << "  ⚠️ No main function found\n";
-            }
-        }
-    }
-    
-    static void countNodes(ASTNode* node, std::map<std::string, int>& counts) {
-        if (!node) return;
-        
-        counts[node->nodeType()]++;
-        
-        // Recursively count child nodes
-        if (auto program = dynamic_cast<ProgramNode*>(node)) {
-            for (const auto& func : program->functions) {
-                countNodes(func.get(), counts);
-            }
-        }
-        else if (auto func = dynamic_cast<FunctionNode*>(node)) {
-            if (func->body) countNodes(func->body.get(), counts);
-        }
-        else if (auto block = dynamic_cast<BlockNode*>(node)) {
-            for (const auto& stmt : block->statements) {
-                countNodes(stmt.get(), counts);
-            }
-        }
-        else if (auto varDecl = dynamic_cast<VarDeclNode*>(node)) {
-            if (varDecl->initializer) countNodes(varDecl->initializer.get(), counts);
-        }
-        else if (auto assign = dynamic_cast<AssignNode*>(node)) {
-            if (assign->value) countNodes(assign->value.get(), counts);
-        }
-        else if (auto ifNode = dynamic_cast<IfNode*>(node)) {
-            if (ifNode->condition) countNodes(ifNode->condition.get(), counts);
-            if (ifNode->thenBlock) countNodes(ifNode->thenBlock.get(), counts);
-            for (const auto& elif : ifNode->elifBlocks) {
-                if (elif.first) countNodes(elif.first.get(), counts);
-                if (elif.second) countNodes(elif.second.get(), counts);
-            }
-            if (ifNode->elseBlock) countNodes(ifNode->elseBlock.get(), counts);
-        }
-        else if (auto whileNode = dynamic_cast<WhileNode*>(node)) {
-            if (whileNode->condition) countNodes(whileNode->condition.get(), counts);
-            if (whileNode->body) countNodes(whileNode->body.get(), counts);
-        }
-        else if (auto ret = dynamic_cast<ReturnNode*>(node)) {
-            if (ret->value) countNodes(ret->value.get(), counts);
-        }
-        else if (auto binOp = dynamic_cast<BinaryOpNode*>(node)) {
-            if (binOp->left) countNodes(binOp->left.get(), counts);
-            if (binOp->right) countNodes(binOp->right.get(), counts);
-        }
+        };
+
+        for (auto &s : fn.body) walk(s.get());
     }
 };
 
-// ==================== MAIN ====================
+
+
+
 int main() {
-    std::cout << "Parser & AST Test System\n";
-    std::cout << "========================\n\n";
-    
-    int choice;
-    std::cout << "Choose testing mode:\n";
-    std::cout << "1. Test with file.txt\n";
-    std::cout << "2. Run test suite\n";
-    std::cout << "3. Enter custom code\n";
-    std::cout << "Choice: ";
-    
-    std::cin >> choice;
-    std::cin.ignore(); // Clear newline
-    
-    if (choice == 1) {
-        // Test with file.txt
-        ParserTester::testWithFile("file.txt");
-    } 
-    else if (choice == 2) {
-        // Run test suite
-        ParserTester::runTestSuite();
-    } 
-    else if (choice == 3) {
-        // Enter custom code
-        std::cout << "\nEnter your code (end with empty line):\n";
-        std::string line;
-        std::string source;
-        
-        while (true) {
-            std::getline(std::cin, line);
-            if (line.empty()) break;
-            source += line + "\n";
-        }
-        
-        ParserTester::testSource(source);
-    } 
-    else {
-        std::cerr << "Invalid choice\n";
+    const string input_filename = "file.txt";
+    const string output_filename = "output.txt";
+
+    cout << "===========================================\n";
+    cout << "Simple Compiler - Lexer+Parser+MIPS\n";
+    cout << "Input file: " << input_filename << "\n";
+    cout << "Output file: " << output_filename << "\n";
+    cout << "===========================================\n\n";
+
+    // Read input file
+    ifstream input_file(input_filename);
+    if (!input_file.is_open()) {
+        cerr << "Error: Cannot open input file '" << input_filename << "'\n";
+        cerr << "Please create a file called 'file.txt' with your program.\n";
         return 1;
     }
-    
-    std::cout << "\n" << std::string(60, '=') << "\n";
-    std::cout << "TEST COMPLETE\n";
-    std::cout << std::string(60, '=') << "\n";
-    
+
+    stringstream buffer;
+    buffer << input_file.rdbuf();
+    string source_code = buffer.str();
+    input_file.close();
+
+    cout << "Source code read from " << input_filename << ":\n";
+    cout << "-------------------------------------------\n";
+    cout << source_code;
+    cout << "\n-------------------------------------------\n\n";
+
+    try {
+        // Create lexer and tokenize
+        Lexer lexer(source_code);
+        vector<Lexer::Token> tokens = lexer.tokenize();
+
+        cout << "Tokens found (" << tokens.size() << "):\n";
+        cout << "-------------------------------------------\n";
+        for (const auto& token : tokens) {
+            cout << "Line " << token.line << ", Col " << token.column
+                      << ": " << Lexer::tokenTypeToString(token.type);
+            if (!token.value.empty()) {
+                cout << " ('" << token.value << "')";
+            }
+            cout << "\n";
+        }
+        cout << "-------------------------------------------\n\n";
+
+        // Parse
+        Parser parser(tokens);
+        auto func = parser.parseProgram();
+        cout << "Parsing finished. Generating MIPS...\n";
+
+        // Generate MIPS
+        CodeGen cg;
+        cg.generate(*func);
+        cg.writeToFile(output_filename);
+
+        cout << "MIPS written to " << output_filename << "\n";
+        cout << "Done.\n";
+    } catch (const exception &e) {
+        cerr << "Compilation error: " << e.what() << "\n";
+        return 1;
+    }
     return 0;
 }
+

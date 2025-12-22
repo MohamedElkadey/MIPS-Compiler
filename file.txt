@@ -1,6 +1,6 @@
 function main() {
     int a = 10;
-    int b = 10 + a;
-    int z = b *4 + a *5;
-    a = a + z;
+    a = a + 5;
+
+
 }
